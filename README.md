@@ -1,5 +1,10 @@
-### Dependency Injection Container
-#### Full featured, flexible and fluent IoC solution for Python
+## Dependency Injection Container
+### Full featured, flexible and fluent IoC solution for Python
+
+#### PyPi
+di_container can be installed from [PyPi](https://pypi.org/project/di-container/). 
+
+#### The Code
 
 ##### Basics:
 Types, callables and values can be registered into a container and bound to either a dependency type, or a name.
@@ -96,6 +101,12 @@ main_container.add_sub_container(comm_container)
 main_container.resolve_name('main_function')
 ```
 
-##### More:
-* For a specification of all functionality, see the [API documentation](http://dvdgitlab/drorey/di_container/tree/master/docs/api/container.html).
-* An [example](http://dvdgitlab/drorey/di_container/tree/master/example) is available in the git repository.
+#### To Do
+Some features that are being considered:
+1. Configuration registration.
+1. Binding to members of registered items.
+1. Registration of collections of values.
+1. Display of dependency tree (forest).
+
+#### More
+* An [example](http://github.com/eyaldror/di_container/tree/master/example) is available in the git repository.
