@@ -69,7 +69,7 @@ container.register_value(app_config['network']['http_port']).to_name('port', int
 ```
 
 ##### Sub-containers:
-Sub-containers can help when writing several packages, or sub-systems, or just to organize a large amount of dependcies.
+Sub-containers can help when writing several packages, or sub-systems, or just to organize a large amount of dependencies.
 The resolving process will try to resolve from the current container and if no match is found, will try to resolve using each sub-container (and its sub-containers recursively) in the order they were added.
 Containers are initialized with names for identification in error messages.
 ```python
