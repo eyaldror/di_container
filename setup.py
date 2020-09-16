@@ -1,10 +1,23 @@
 from setuptools import setup, find_packages
 from pathlib import Path
 
+UTF8 = 'utf-8'
+
+
+def get_version():
+    version_var = '__version__'
+    package_file = 'di_container/__init__.py'
+    for line in Path().read_text(encoding=UTF8).splitlines():
+        if line.startswith(version_var):
+            return line.partition('=')[-1].strip()
+    else:
+        raise RuntimeError(f'Failed to find {version_var} in {package_file}.')
+
+
 setup(
     name='di_container',
-    version='2.1.1',
-    install_requires=Path('requirements.txt').read_text(encoding='utf-8').splitlines(),
+    version=get_version(),
+    install_requires=Path('requirements.txt').read_text(encoding=UTF8).splitlines(),
     author='Eyal Dror',
     description='A dependency injection container for Python, using semantics similar to Castle Windsor.',
     long_description=Path('README.md').read_text(encoding='utf-8'),
