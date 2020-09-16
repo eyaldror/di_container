@@ -106,18 +106,27 @@ class Circle3:
     pass
 
 
-def circle1_init(self, circle: Circle2): pass
+def circle1_init(self, circle: Circle2):
+    self.circle = circle
 
 
-def circle2_init(self, circle: Circle3): pass
+def circle2_init(self, circle: Circle3):
+    self.circle = circle
 
 
-def circle3_init(self, circle: Circle1): pass
+def circle3_init(self, circle: Circle1):
+    self.circle = circle
 
 
 Circle1.__init__ = circle1_init
 Circle2.__init__ = circle2_init
 Circle3.__init__ = circle3_init
+
+
+class DependenciesOfSameType:
+    def __init__(self, param1: Base, param2: Base):
+        self.param1 = param1
+        self.param2 = param2
 
 
 # endregion classes etc. for testing
@@ -394,6 +403,11 @@ def test_circular_registration(container: Container):
     assert type(container.resolve_type(Circle1)) is Circle1
 
 
+def test_registration_with_same_type_not_circular(container: Container):
+    container.register_type(Base).to_name('param1')
+    container.register_type(Base).to_name('param2')
+    container.register_type(DependenciesOfSameType).to_type(DependenciesOfSameType)
+    assert type(container.resolve_type(DependenciesOfSameType)) is DependenciesOfSameType
 
 # endregion test resolving nuances
 
