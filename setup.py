@@ -7,9 +7,9 @@ UTF8 = 'utf-8'
 def get_version():
     version_var = '__version__'
     package_file = 'di_container/__init__.py'
-    for line in Path().read_text(encoding=UTF8).splitlines():
+    for line in Path(package_file).read_text(encoding=UTF8).splitlines():
         if line.startswith(version_var):
-            return line.partition('=')[-1].strip()
+            return line.partition('=')[-1].strip()[1:-1]  # remove whitespaces and the quotation marks
     else:
         raise RuntimeError(f'Failed to find {version_var} in {package_file}.')
 
