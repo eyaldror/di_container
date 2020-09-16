@@ -2,8 +2,9 @@ import inspect
 import logging
 import os
 from abc import ABC, abstractmethod, ABCMeta
+from collections import deque
 from enum import Enum
-from typing import Any, Optional, Dict, Type, TypeVar, Callable, Generic, Union, Tuple, Iterable, Sequence, List, Set
+from typing import Any, Optional, Dict, Type, TypeVar, Callable, Generic, Union, Tuple, Iterable, Sequence, List, Deque, cast
 
 _logger = logging.getLogger(__name__)
 
@@ -166,7 +167,7 @@ class Register(ABC, Generic[T]):
         self._register_to_key(name, base_type, replace)
         return self
 
-    def _resolve_param(self, param_name: str, keys_in_resolving_process: Set,
+    def _resolve_param(self, param_name: str, registers_in_resolving_process: Deque['Register'],
                        has_given_value: bool, given_value: Any,
                        has_name_binding: bool, name_binding: str,
                        has_default: bool, default, prefer_defaults: bool,
@@ -179,7 +180,7 @@ class Register(ABC, Generic[T]):
             is_resolved = True
         elif has_name_binding:
             if name_binding in self._registry:
-                value = self._registry[name_binding]._resolve_recursive(errors, keys_in_resolving_process, prefer_defaults=False)
+                value = self._registry[name_binding]._resolve_recursive(errors, registers_in_resolving_process, prefer_defaults=False)
                 is_resolved = True
         elif prefer_defaults and has_default:
             value = default
@@ -187,30 +188,29 @@ class Register(ABC, Generic[T]):
         elif has_annotation:
             param_type = annotation if callable(annotation) else eval(annotation)
             if param_type in self._registry:
-                value = self._registry[param_type]._resolve_recursive(errors, keys_in_resolving_process, prefer_defaults=False)
+                value = self._registry[param_type]._resolve_recursive(errors, registers_in_resolving_process, prefer_defaults=False)
                 is_resolved = True
         if value is None:  # Last resort: Using the argument's name as a binding key, or taking the default value, if exists.
             if self._param_names_as_bindings and param_name in self._registry:
-                value = self._registry[param_name]._resolve_recursive(errors, keys_in_resolving_process, prefer_defaults=False)
+                value = self._registry[param_name]._resolve_recursive(errors, registers_in_resolving_process, prefer_defaults=False)
                 is_resolved = True
             elif has_default:
                 value = default
                 is_resolved = True
         if not is_resolved:
             error_desc = f'The parameter "{param_name}" ' \
-                         'has no given value, type annotation or default value that is registered, ' \
-                         'and cannot be resolved.'
+                         'has no given value, type annotation or default value that is registered, and cannot be resolved.'
             errors.append(error_desc)
         return value, errors
 
-    def _resolve_params(self, prefer_defaults: bool, a_callable: Callable, keys_in_resolving_process: Set) -> Tuple[Iterable, Dict, List]:
+    def _resolve_params(self, prefer_defaults: bool, a_callable: Callable, registers_in_resolving_process: Deque['Register']) -> Tuple[Iterable, Dict, List]:
         arg_values = []
         kwarg_values = {}
         errors = []
 
         is_type = type(a_callable) in (type, ABCMeta)
         if is_type:
-            a_type: type = a_callable
+            a_type: type = cast(type, a_callable)
             function = a_type.__init__
         else:
             function = a_callable
@@ -240,7 +240,7 @@ class Register(ABC, Generic[T]):
             has_annotation = arg in params.annotations
             annotation = params.annotations.get(arg, None)
 
-            arg_value, param_errors = self._resolve_param(arg, keys_in_resolving_process,
+            arg_value, param_errors = self._resolve_param(arg, registers_in_resolving_process,
                                                           has_given_value, given_value,
                                                           has_name_binding, name_binding,
                                                           has_default, default, prefer_defaults,
@@ -274,7 +274,7 @@ class Register(ABC, Generic[T]):
             has_annotation = kwarg in params.annotations
             annotation = params.annotations.get(kwarg, None)
 
-            kwarg_value, param_errors = self._resolve_param(kwarg, keys_in_resolving_process,
+            kwarg_value, param_errors = self._resolve_param(kwarg, registers_in_resolving_process,
                                                             has_given_value, given_value,
                                                             has_name_binding, name_binding,
                                                             has_default, default, prefer_defaults,
@@ -293,30 +293,32 @@ class Register(ABC, Generic[T]):
                 errors.append(error_desc)
         return arg_values, kwarg_values, errors
 
-    def _resolve(self, a_callable: Callable, keys_in_resolving_process: Set, prefer_defaults: bool) -> Tuple[Optional[T], List[str]]:
+    def _resolve(self, registers_in_resolving_process: Deque['Register'], prefer_defaults: bool) -> Tuple[Optional[T], List[str]]:
         """
         :raises DiContainerError: If errors occurred during the resolving process.
         """
-        if a_callable in keys_in_resolving_process:
-            errors = [f"{a_callable.__name__}'s registration has a circular dependency on itself. "
-                      'Set the problematic parameter explicitly.']
+        a_callable = self._factory_method()
+        if self in registers_in_resolving_process:
+            errors = [f"{a_callable.__name__}'s registration to {self._key if type(self._key) is str else self._key.__name__} "
+                      'has a circular dependency on itself. Set the problematic parameter explicitly.']
             value = None
         else:
-            keys_in_resolving_process.add(a_callable)
-            arg_values, kwarg_values, errors = self._resolve_params(prefer_defaults, a_callable, keys_in_resolving_process)
+            registers_in_resolving_process.append(self)
+            arg_values, kwarg_values, errors = self._resolve_params(prefer_defaults, a_callable, registers_in_resolving_process)
             if errors:
                 error_str = f'Errors while trying to resolve parameters for "{a_callable.__name__}" ' \
                             f'in container "{self._registry.name}": [\n{(os.linesep + ",").join(errors)}\n]'
                 raise DiContainerError(error_str)
             value = a_callable(*arg_values, **kwarg_values)
+            registers_in_resolving_process.pop()
         return value, errors
 
-    def _resolve_recursive(self, errors: List[str], keys_in_resolving_process: Set, prefer_defaults: bool) -> T:
+    def _resolve_recursive(self, errors: List[str], registers_in_resolving_process: Deque['Register'], prefer_defaults: bool) -> T:
         """
         :raises DiContainerError: If errors occurred during the resolving process.
         """
         if self._cached_instance is None or self._instantiation is Instantiation.MultiInstance:
-            self._cached_instance, sub_errors = self._resolve(self._factory_method(), keys_in_resolving_process, prefer_defaults)
+            self._cached_instance, sub_errors = self._resolve(registers_in_resolving_process, prefer_defaults)
             errors.extend(sub_errors)
         return self._cached_instance
 
@@ -336,7 +338,7 @@ class Register(ABC, Generic[T]):
         :return: The resolved value.
         :raises DiContainerError: If errors occurred during the resolving process.
         """
-        return self._resolve_recursive(prefer_defaults=prefer_defaults, errors=[], keys_in_resolving_process=set())
+        return self._resolve_recursive(prefer_defaults=prefer_defaults, errors=[], registers_in_resolving_process=deque())
 
 
 class CallableRegister(Register):
@@ -397,7 +399,7 @@ class Container:
         :param concrete_type: The actual type to be instantiated when resolving.
         :param instantiation: The instantiation multiplicity.
                                 Instantiation.Singleton for one time instantiation and caching.
-                                Instantiation.MuliInstance for new instantiation on every resolve.
+                                Instantiation.MultiInstance for new instantiation on every resolve.
         :return: A Register object that represents the given concrete type.
         """
         return TypeRegister(self._registry, concrete_type, instantiation, self._param_names_as_bindings)
@@ -477,7 +479,8 @@ class Container:
         Resolves the given dependency type to an appropriate value, according to the content of this :class:`Container`.
 
         :param dependency_type: The type to be resolved into a value.
-        :param prefer_defaults: If :code:`True`, arguments that were given no explicit values or bindings, will be fulfilled by their defaults first, if available.
+        :param prefer_defaults: If :code:`True`, arguments that were given no explicit values or bindings,
+        will be fulfilled by their defaults first, if available.
         :return: The resolved value, of appropriate type (a subclass of the dependency type).
         :raises ValueError: If the given type is not registered in this Container.
         """
@@ -488,7 +491,8 @@ class Container:
         Resolves the given name to a value, according to the content of this Container.
 
         :param name: The name to be resolved into a value.
-        :param prefer_defaults: If :code:`True`, arguments that were given no explicit values or bindings, will be fulfilled by their defaults first, if available.
+        :param prefer_defaults: If :code:`True`, arguments that were given no explicit values or bindings,
+        will be fulfilled by their defaults first, if available.
         :return: The resolved value.
         :raises ValueError: If the given name is not registered in this Container.
         """
