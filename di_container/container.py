@@ -282,13 +282,30 @@ class Register(ABC, Generic[T]):
             kwarg_values[kwarg] = kwarg_value
             errors.extend(param_errors)
 
-        # handle varkw (**kwargs)
+        # handle varkw (**kwargs) with unused given keyword params
         unused_keywords = set(self._given_keyword_params.keys()) - set(params.args) - set(params.kwonlyargs)
         if unused_keywords:
             if params.varkw is not None:
                 kwarg_values.update(self._given_keyword_params)
             else:
                 error_desc = f'The given keyword arguments {unused_keywords} are either wrong, ' \
+                             'or varkw (**kwargs) is missing'
+                errors.append(error_desc)
+
+        # handle varkw (**kwargs) with unused given name bindings
+        unused_name_bindings = set(self._given_name_bindings.keys()) - set(params.args) - set(params.kwonlyargs)
+        if unused_name_bindings:
+            if params.varkw is not None:
+                for kwarg, name_binding in self._given_name_bindings.items():
+                    kwarg_value, param_errors = self._resolve_param(kwarg, registers_in_resolving_process,
+                                                                    has_given_value=False, given_value=None,
+                                                                    has_name_binding=True, name_binding=name_binding,
+                                                                    has_default=False, default=None, prefer_defaults=prefer_defaults,
+                                                                    has_annotation=False, annotation=None)
+                    kwarg_values[kwarg] = kwarg_value
+                    errors.extend(param_errors)
+            else:
+                error_desc = f'The given name bindings {unused_name_bindings} are either wrong, ' \
                              'or varkw (**kwargs) is missing'
                 errors.append(error_desc)
         return arg_values, kwarg_values, errors

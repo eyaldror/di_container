@@ -307,6 +307,16 @@ def test_register_with_varargs_and_kwargs(container: Container):
     assert varargs_and_kwargs.kwargs == {'c': 3, 'd': 4}
 
 
+def test_register_with_kwargs_and_name_bindings(container: Container):
+    container.register_type(VarArgsAndKWArgs).to_type(VarArgsAndKWArgs).with_name_bindings(a='one', b='two', c='three')
+    container.register_value(1).to_name('one')
+    container.register_value(2).to_name('two')
+    container.register_value(3).to_name('three')
+    varargs_and_kwargs = container.resolve_type(VarArgsAndKWArgs)
+    assert varargs_and_kwargs.varargs == []
+    assert varargs_and_kwargs.kwargs == {'a': 1, 'b': 2, 'c': 3}
+
+
 def test_register_with_kwonlyargs(container: Container):
     container.register_type(KWOnlyArgs).to_type(KWOnlyArgs).with_params(1, 2, c=3, d=4)
     kwonly_args = container.resolve_type(KWOnlyArgs)
