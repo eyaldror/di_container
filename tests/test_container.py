@@ -255,7 +255,7 @@ def test_register_with_multiple_args(container: Container):
     container.register_type(MultipleArgs).to_type(MultipleArgs).with_params(1, 2, 3, 4)
     multiple_args = container.resolve_type(MultipleArgs)
     assert type(multiple_args) is MultipleArgs
-    assert multiple_args.a == 1 and multiple_args.b == 2 and multiple_args.c == 3
+    assert multiple_args.a == 1 and multiple_args.b == 2 and multiple_args.c == 3 and multiple_args.d == 4
 
 
 def test_register_with_multiple_kwargs(container: Container):
@@ -307,6 +307,28 @@ def test_register_with_varargs_and_kwargs(container: Container):
     assert varargs_and_kwargs.kwargs == {'c': 3, 'd': 4}
 
 
+def test_register_with_multiple_args_and_name_bindings(container: Container):
+    container.register_type(MultipleArgs).to_type(MultipleArgs).with_name_bindings('one', 'two', 'three', 'four')
+    container.register_value(1).to_name('one')
+    container.register_value(2).to_name('two')
+    container.register_value(3).to_name('three')
+    container.register_value(4).to_name('four')
+    multiple_args = container.resolve_type(MultipleArgs)
+    assert type(multiple_args) is MultipleArgs
+    assert multiple_args.a == 1 and multiple_args.b == 2 and multiple_args.c == 3 and multiple_args.d == 4
+
+
+def test_register_with_varargs_and_name_bindings(container: Container):
+    container.register_type(VarArgsAndKWArgs).to_type(VarArgsAndKWArgs).with_name_bindings('one', 'two', 'three')
+    container.register_value(1).to_name('one')
+    container.register_value(2).to_name('two')
+    container.register_value(3).to_name('three')
+    varargs_and_kwargs = container.resolve_type(VarArgsAndKWArgs)
+    assert type(varargs_and_kwargs) is VarArgsAndKWArgs
+    assert varargs_and_kwargs.varargs == [1, 2, 3]
+    assert varargs_and_kwargs.kwargs == {}
+
+
 def test_register_with_kwargs_and_name_bindings(container: Container):
     container.register_type(VarArgsAndKWArgs).to_type(VarArgsAndKWArgs).with_name_bindings(a='one', b='two', c='three')
     container.register_value(1).to_name('one')
@@ -315,6 +337,35 @@ def test_register_with_kwargs_and_name_bindings(container: Container):
     varargs_and_kwargs = container.resolve_type(VarArgsAndKWArgs)
     assert varargs_and_kwargs.varargs == []
     assert varargs_and_kwargs.kwargs == {'a': 1, 'b': 2, 'c': 3}
+
+
+def test_register_with_varargs_and_kwargs_and_name_bindings(container: Container):
+    container.register_type(VarArgsAndKWArgs).to_type(VarArgsAndKWArgs).with_name_bindings('one', 'two', c='three', d='four')
+    container.register_value(1).to_name('one')
+    container.register_value(2).to_name('two')
+    container.register_value(3).to_name('three')
+    container.register_value(4).to_name('four')
+    varargs_and_kwargs = container.resolve_type(VarArgsAndKWArgs)
+    assert varargs_and_kwargs.varargs == [1, 2]
+    assert varargs_and_kwargs.kwargs == {'c': 3, 'd': 4}
+
+
+def test_register_with_varargs_and_kwargs_and_params_and_name_bindings(container: Container):
+    container.register_type(VarArgsAndKWArgs).to_type(VarArgsAndKWArgs).with_params(a=1, b=2).with_name_bindings('three', 'four')
+    container.register_value(1).to_name('one')
+    container.register_value(2).to_name('two')
+    container.register_value(3).to_name('three')
+    container.register_value(4).to_name('four')
+    varargs_and_kwargs = container.resolve_type(VarArgsAndKWArgs)
+    assert varargs_and_kwargs.varargs == [3, 4]
+    assert varargs_and_kwargs.kwargs == {'a': 1, 'b': 2}
+
+
+def test_register_error_params_and_name_bindings_varargs(container: Container):
+    with pytest.raises(DiContainerError):
+        container.register_type(VarArgsAndKWArgs).to_type(VarArgsAndKWArgs).with_params(1, 2).with_name_bindings('three', 'four')
+    with pytest.raises(DiContainerError):
+        container.register_type(VarArgsAndKWArgs).to_type(VarArgsAndKWArgs).with_name_bindings('three', 'four').with_params(1, 2)
 
 
 def test_register_with_kwonlyargs(container: Container):
@@ -418,6 +469,7 @@ def test_registration_with_same_type_not_circular(container: Container):
     container.register_type(Base).to_name('param2')
     container.register_type(DependenciesOfSameType).to_type(DependenciesOfSameType)
     assert type(container.resolve_type(DependenciesOfSameType)) is DependenciesOfSameType
+
 
 # endregion test resolving nuances
 

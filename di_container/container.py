@@ -63,13 +63,15 @@ class Register(ABC, Generic[T]):
     """
 
     def __init__(self, registry: _Registry, instantiation: Instantiation, param_names_as_bindings: bool):
+        self._is_valid: bool = True
         self._key: RegistryKey = None
         self._registry: _Registry = registry
         self._instantiation: Instantiation = instantiation
         self._param_names_as_bindings: bool = param_names_as_bindings
         self._given_positional_params: Sequence = ()
         self._given_keyword_params: Dict = {}
-        self._given_name_bindings: Dict = {}
+        self._given_positional_name_bindings: Sequence = ()
+        self._given_keyword_name_bindings: Dict = {}
         self._cached_instance: T = None
 
     @abstractmethod
@@ -79,6 +81,16 @@ class Register(ABC, Generic[T]):
     @abstractmethod
     def _factory_method(self) -> Callable[..., T]:
         pass
+
+    def _invalidate(self):
+        self._is_valid = False
+        self._registry.pop(self._key, None)
+
+    def _check_validity(self):
+        if not self._is_valid:
+            error_msg = f'This Register is not valid anymore. No operations are allowed.'
+            _logger.error(error_msg)
+            raise DiContainerError(error_msg)
 
     def _raise_bad_operation_error(self):
         operation = inspect.stack()[1].function
@@ -94,6 +106,14 @@ class Register(ABC, Generic[T]):
             _logger.error(error_msg)
             raise TypeError(error_msg)
 
+    def _check_only_one_type_of_positional_input(self):
+        if self._given_positional_params and self._given_positional_name_bindings:
+            self._invalidate()
+            error_msg = f'Cannot define both positional params ({self._given_positional_params}) ' \
+                        f'and positional name bindings ({self._given_positional_name_bindings}).'
+            _logger.error(error_msg)
+            raise DiContainerError(error_msg)
+
     def with_params(self, *positional_params, **keyword_params) -> 'Register[T]':
         """
         Assigns values to arguments of the registered object, provided it's :func:`callable` (types, functions etc.).
@@ -102,20 +122,27 @@ class Register(ABC, Generic[T]):
         :param keyword_params: keyword=value assignments.
         :return: The Register object itself, for fluent interfacing.
         """
+        self._check_validity()
         self._given_positional_params = positional_params
+        self._check_only_one_type_of_positional_input()
         self._given_keyword_params = keyword_params
         return self
 
-    def with_name_bindings(self, **name_bindings) -> 'Register[T]':
+    def with_name_bindings(self, *positional_name_bindings, **keyword_name_bindings) -> 'Register[T]':
         """
         Assigns name bindings to arguments of the registered object,
         provided it's :func:`callable` (types, functions etc.).
 
-        :param name_bindings: keyword=name_binding assignments,
+        :param positional_name_bindings: positional name_binding assignments,
+        where :code:`name_binding` is a name to which a dependency is registered.
+        :param keyword_name_bindings: keyword=name_binding assignments,
         where :code:`name_binding` is a name to which a dependency is registered.
         :return: The Register object itself, for fluent interfacing.
         """
-        self._given_name_bindings = name_bindings
+        self._check_validity()
+        self._given_positional_name_bindings = positional_name_bindings
+        self._check_only_one_type_of_positional_input()
+        self._given_keyword_name_bindings = keyword_name_bindings
         return self
 
     def _register_to_key(self, register_key: RegistryKey, type_to_check_against: type, replace: bool = False):
@@ -148,6 +175,7 @@ class Register(ABC, Generic[T]):
         :raises ValueError: If the given dependency type has a registration already and replace is False.
         :raises TypeError: If the object in this Register is not a subclass of the given dependency type.
         """
+        self._check_validity()
         self._register_to_key(dependency_type, dependency_type, replace)
         return self
 
@@ -164,6 +192,7 @@ class Register(ABC, Generic[T]):
         :raises ValueError: If the given name has a registration already and replace is False.
         :raises TypeError: If the object in this Register is not a subclass of the given base type, if given.
         """
+        self._check_validity()
         self._register_to_key(name, base_type, replace)
         return self
 
@@ -230,8 +259,15 @@ class Register(ABC, Generic[T]):
                 has_given_value = False
                 given_value = None
 
-            has_name_binding = arg in self._given_name_bindings
-            name_binding = self._given_name_bindings.get(arg, None)
+            if i <= len(self._given_positional_name_bindings) - 1:  # is there a given value in the i'th place?
+                has_name_binding = True
+                name_binding = self._given_positional_name_bindings[i]
+            elif arg in self._given_keyword_name_bindings:
+                has_name_binding = True
+                name_binding = self._given_keyword_name_bindings.get(arg, None)
+            else:
+                has_name_binding = False
+                name_binding = None
 
             default_index = i - (len(params.args) - len(params.defaults or ()))  # default matching from the end
             has_default = default_index >= 0
@@ -255,6 +291,15 @@ class Register(ABC, Generic[T]):
             else:
                 error_desc = 'Too many positional arguments given, or vararg (*args) is missing'
                 errors.append(error_desc)
+        elif len(self._given_positional_name_bindings) > len(params.args):
+            if params.varargs is not None:
+                arg_values.extend(self._given_positional_params[len(params.args):])
+                values = [self._registry[name_binding]._resolve_recursive(errors, registers_in_resolving_process, prefer_defaults=False)
+                          for name_binding in self._given_positional_name_bindings[len(params.args):]]
+                arg_values.extend(values)
+            else:
+                error_desc = 'Too many positional name bindings given, or vararg (*args) is missing'
+                errors.append(error_desc)
 
         # handle keyword arguments
         for kwarg in params.kwonlyargs:
@@ -265,8 +310,8 @@ class Register(ABC, Generic[T]):
                 has_given_value = False
                 given_value = None
 
-            has_name_binding = kwarg in self._given_name_bindings
-            name_binding = self._given_name_bindings.get(kwarg, None)
+            has_name_binding = kwarg in self._given_keyword_name_bindings
+            name_binding = self._given_keyword_name_bindings.get(kwarg, None)
 
             has_default = kwarg in (params.kwonlydefaults or ())
             default = params.kwonlydefaults[kwarg] if has_default else None
@@ -293,10 +338,10 @@ class Register(ABC, Generic[T]):
                 errors.append(error_desc)
 
         # handle varkw (**kwargs) with unused given name bindings
-        unused_name_bindings = set(self._given_name_bindings.keys()) - set(params.args) - set(params.kwonlyargs)
+        unused_name_bindings = set(self._given_keyword_name_bindings.keys()) - set(params.args) - set(params.kwonlyargs)
         if unused_name_bindings:
             if params.varkw is not None:
-                for kwarg, name_binding in self._given_name_bindings.items():
+                for kwarg, name_binding in self._given_keyword_name_bindings.items():
                     kwarg_value, param_errors = self._resolve_param(kwarg, registers_in_resolving_process,
                                                                     has_given_value=False, given_value=None,
                                                                     has_name_binding=True, name_binding=name_binding,
@@ -355,6 +400,7 @@ class Register(ABC, Generic[T]):
         :return: The resolved value.
         :raises DiContainerError: If errors occurred during the resolving process.
         """
+        self._check_validity()
         return self._resolve_recursive(prefer_defaults=prefer_defaults, errors=[], registers_in_resolving_process=deque())
 
 
@@ -392,7 +438,7 @@ class ValueRegister(Register):
     def with_params(self, *positional_params, **keyword_params):
         self._raise_bad_operation_error()
 
-    def with_name_bindings(self, **name_bindings):
+    def with_name_bindings(self, **keyword_name_bindings):
         self._raise_bad_operation_error()
 
 
