@@ -145,15 +145,18 @@ class Register(ABC, Generic[T]):
         self._given_keyword_name_bindings = keyword_name_bindings
         return self
 
+    @staticmethod
+    def _str_key(key: Any) -> str:
+        return key.__name__ if hasattr(key, '__name__') else key
+
     def _register_to_key(self, register_key: RegistryKey, type_to_check_against: type, replace: bool = False):
         if self._key is not None:
-            error_msg = f'This Register record is already bound to ' \
-                        f'"{self._key.__name__ if callable(self._key) else self._key}".' \
+            error_msg = f'This Register record is already bound to "{self._str_key(self._key)}".' \
                         ' Probably invoked to_type/to_name more than once.'
             _logger.error(error_msg)
             raise DiContainerError(error_msg)
         if register_key in self._registry and not replace:
-            error_msg = f'The register key "{register_key.__name__ if callable(register_key) else register_key}"' \
+            error_msg = f'The register key "{self._str_key(register_key)}"' \
                         f' is already bound to "{self._registry[register_key]._type_to_check().__name__}"' \
                         f' and replace was not requested (replace == False).'
             _logger.error(error_msg)
@@ -361,8 +364,14 @@ class Register(ABC, Generic[T]):
         """
         a_callable = self._factory_method()
         if self in registers_in_resolving_process:
-            errors = [f"{a_callable.__name__}'s registration to {self._key if type(self._key) is str else self._key.__name__} "
-                      'has a circular dependency on itself. Set the problematic parameter explicitly.']
+            occurrence_index = registers_in_resolving_process.index(self)
+            circle = f'{self._str_key(registers_in_resolving_process[occurrence_index]._factory_method())} ({self._str_key(self._key)}) --> '
+            occurrence_index += 1
+            circle += ' --> '.join(self._str_key(registers_in_resolving_process[i]._factory_method())
+                                   for i in range(occurrence_index, len(registers_in_resolving_process)))
+            circle += f' --> {self._str_key(self._key)}'
+            errors = [f"{a_callable.__name__}'s registration to {self._str_key(self._key)} "
+                      f'has a circular dependency on itself: {circle}. Set the problematic parameter explicitly.']
             value = None
         else:
             registers_in_resolving_process.append(self)
