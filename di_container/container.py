@@ -12,6 +12,38 @@ T = TypeVar('T')
 RegistryKey = Union[Type[T], str]
 
 
+def get_origin(tp):
+    """
+    Simplified getting of the unsubscripted version of a type. Should be replaced with typing.get_origin from Python >= 3.8
+    """
+    if hasattr(tp, '__origin__'):
+        return tp.__origin__
+    return None
+
+
+def get_args(tp):
+    """
+    Simplified getting of type arguments. Should be replaced with typing.get_args from Python >= 3.8
+    """
+    if hasattr(tp, '__args__'):
+        return tp.__args__
+    return ()
+
+
+def erase_optional(tp) -> Type[T]:
+    """
+    :param tp: The type parameter that might be :code:`Optional[T]` (:code:`Union[T, NoneType]`).
+    :return: The type :code:`Type[T]` within the :code:`Optional[T]`, if the given type parameter is of the form :code:`Optional[T]`,
+    otherwise returns :tp: itself.
+    """
+    origin = get_origin(tp)
+    if origin is not None:
+        args = get_args(tp)
+        if len(args) == 2 and isinstance(None, args[1]):
+            return args[0]
+    return tp
+
+
 class DiContainerError(Exception):
     """
     Describes an error in the operation of a container.
@@ -178,6 +210,7 @@ class Register(ABC, Generic[T]):
         :raises ValueError: If the given dependency type has a registration already and replace is False.
         :raises TypeError: If the object in this Register is not a subclass of the given dependency type.
         """
+        dependency_type = erase_optional(dependency_type)
         self._check_validity()
         self._register_to_key(dependency_type, dependency_type, replace)
         return self
@@ -195,6 +228,7 @@ class Register(ABC, Generic[T]):
         :raises ValueError: If the given name has a registration already and replace is False.
         :raises TypeError: If the object in this Register is not a subclass of the given base type, if given.
         """
+        base_type = erase_optional(base_type)
         self._check_validity()
         self._register_to_key(name, base_type, replace)
         return self
@@ -219,6 +253,7 @@ class Register(ABC, Generic[T]):
             is_resolved = True
         elif has_annotation:
             param_type = annotation if callable(annotation) else eval(annotation)
+            param_type = erase_optional(param_type)
             if param_type in self._registry:
                 value = self._registry[param_type]._resolve_recursive(errors, registers_in_resolving_process, prefer_defaults=False)
                 is_resolved = True

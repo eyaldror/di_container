@@ -1,3 +1,5 @@
+from typing import Optional
+
 import pytest
 
 from di_container.container import Container, Instantiation, DiContainerError
@@ -127,6 +129,11 @@ class DependenciesOfSameType:
     def __init__(self, param1: Base, param2: Base):
         self.param1 = param1
         self.param2 = param2
+
+
+class DependantWithOptional:
+    def __init__(self, a: Optional[A] = None):
+        self.a = a
 
 
 # endregion classes etc. for testing
@@ -418,14 +425,14 @@ def test_resolve_implicit_params_param_name_as_binding_correct(container: Contai
     assert type(dependant.base) is A
 
 
-def test_resolve_implicit_params_param_name_as_binding_not_allowed(container_no_implicit):
+def test_resolve_implicit_params_param_name_as_binding_not_allowed(container_no_implicit: Container):
     container_no_implicit.register_type(DependantWithoutTypeHints).to_name('DEPENDANT')
     container_no_implicit.register_type(A).to_name('base')
     with pytest.raises(DiContainerError):
         container_no_implicit.resolve_name('DEPENDANT')
 
 
-def test_resolve_implicit_params_param_name_as_binding_explicit_binding_type(container_no_implicit):
+def test_resolve_implicit_params_param_name_as_binding_explicit_binding_type(container_no_implicit: Container):
     container_no_implicit.register_type(DependantWithoutTypeHints).to_name('DEPENDANT').with_name_bindings(base=Base)
     container_no_implicit.register_type(A).to_type(Base)
     dependant: DependantWithoutTypeHints = container_no_implicit.resolve_name('DEPENDANT')
@@ -433,7 +440,7 @@ def test_resolve_implicit_params_param_name_as_binding_explicit_binding_type(con
     assert type(dependant.base) is A
 
 
-def test_resolve_implicit_params_param_name_as_binding_explicit_binding_name(container_no_implicit):
+def test_resolve_implicit_params_param_name_as_binding_explicit_binding_name(container_no_implicit: Container):
     container_no_implicit.register_type(DependantWithoutTypeHints).to_name('DEPENDANT').with_name_bindings(base='base')
     container_no_implicit.register_type(A).to_name('base')
     dependant: DependantWithoutTypeHints = container_no_implicit.resolve_name('DEPENDANT')
@@ -469,6 +476,15 @@ def test_registration_with_same_type_not_circular(container: Container):
     container.register_type(Base).to_name('param2')
     container.register_type(DependenciesOfSameType).to_type(DependenciesOfSameType)
     assert type(container.resolve_type(DependenciesOfSameType)) is DependenciesOfSameType
+
+
+def test_registration_with_optional_parameters(container: Container):
+    container.register_type(DependantWithOptional, instantiation=Instantiation.MultiInstance).to_type(DependantWithOptional)
+    dependant: DependantWithOptional = container.resolve_type(DependantWithOptional)
+    assert dependant.a is None
+    container.register_type(A).to_type(A)
+    dependant: DependantWithOptional = container.resolve_type(DependantWithOptional)
+    assert type(dependant.a) is A
 
 
 # endregion test resolving nuances
