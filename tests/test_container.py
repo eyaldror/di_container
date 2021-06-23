@@ -388,6 +388,19 @@ def test_register_with_missing_kwonlyargs(container: Container):
         container.resolve_type(KWOnlyArgs)
 
 
+def test_remove_registration(container: Container, sub_container: Container):
+    container.add_sub_container(sub_container)
+    sub_container.register_type(A).to_name('A')
+    assert type(container.resolve_name('A')) is A
+    with pytest.raises(ValueError):
+        container.remove_registration('WRONG')
+    with pytest.raises(ValueError):
+        container.remove_registration('A')
+    sub_container.remove_registration('A')
+    with pytest.raises(ValueError):
+        container.resolve_name('A')
+
+
 # endregion test registration nuances
 
 

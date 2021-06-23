@@ -4,7 +4,7 @@ import os
 from abc import ABC, abstractmethod, ABCMeta
 from collections import deque
 from enum import Enum
-from typing import Any, Optional, Dict, Type, TypeVar, Callable, Generic, Union, Tuple, Iterable, Sequence, List, Deque, cast
+from typing import Any, Optional, Dict, Type, TypeVar, Callable, Generic, Union, Tuple, Iterable, Sequence, List, Deque, cast, overload
 
 _logger = logging.getLogger(__name__)
 
@@ -84,9 +84,43 @@ class _Registry(Dict[RegistryKey, 'Register[T]']):
         for sub_registry in self._sub_registries.values():
             if k in sub_registry:
                 return sub_registry[k]
+        else:
+            raise KeyError(k)
 
     def __contains__(self, o: object) -> bool:
         return super().__contains__(o) or any(o in sub_registry for sub_registry in self._sub_registries.values())
+
+    @overload
+    def pop(self, key: RegistryKey[T]) -> T:
+        ...
+
+    @overload
+    def pop(self, key: RegistryKey[T], default: T = ...) -> T:
+        ...
+
+    def pop(self, key: RegistryKey[T], default: T = ...) -> T:
+        try:
+            return super().pop(key)
+        except KeyError:
+            if default is not Ellipsis:
+                return default
+            raise
+
+    @overload
+    def get(self, key: RegistryKey[T]) -> Optional[T]:
+        ...
+
+    @overload
+    def get(self, key: RegistryKey[T], default: T = ...) -> T:
+        ...
+
+    def get(self, key: RegistryKey[T], default: T = ...) -> T:
+        try:
+            return self.__getitem__(key)
+        except KeyError:
+            if default is not Ellipsis:
+                return default
+            raise
 
 
 class Register(ABC, Generic[T]):
@@ -535,6 +569,24 @@ class Container:
         :return: A Register object that represents the given concrete type.
         """
         return ValueRegister(self._registry, value)
+
+    def remove_registration(self, key: RegistryKey):
+        """
+        Removes from this :class:`Container` a :class:`Register` record registered under the given key.
+
+        :param key: The key under which the :class:`Register` record to be removed is registered.
+        :raises ValueError: If the given key is not registered in this Container.
+        """
+        if key not in self._registry:
+            error_msg = f'The key {key} is not registered in this container ({self.name}).'
+            _logger.error(error_msg)
+            raise ValueError(error_msg)
+        popped_value = self._registry.pop(key, None)
+        if popped_value is None:
+            error_msg = f'The key {key} is registered in one or more sub-containers of this container ({self.name}). ' \
+                        f'Please remove this key directly from the sub-container(s).'
+            _logger.error(error_msg)
+            raise ValueError(error_msg)
 
     def _check_for_circular_sub_containers(self, new_sub_container: 'Container') -> bool:
         def _check_for_circular_sub_containers_recursive(src_container: 'Container',
