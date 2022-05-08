@@ -53,11 +53,23 @@ container.register_callable(ConnectionFactory.new_udp_connection, instantiation=
 
 ##### Resolving order:
 Resolving a registered type, or name, will attempt to resolve any needed arguments for type initializers, or callables, recursively.
-First, with values given in `with_params`, second, with declared default values, and then, with arguments' type annotations (please use them ).
+First, with values given in `with_params`, second, with arguments' type annotations (please use them 🙂), and then, with declared default values.
 
 When a dependency is registered `to_name`, it cannot be automatically inferred by type annotation.
 A container's default behavior is to use an argument's name to lookup a `to_name` registration as a last attempt to resolve an argument.
-This behavior can be changed if it's deemed to be too risky, and dependency names can be assigned explicitly when needed.
+This behavior can be changed if it's deemed to be too risky, and dependency names can be assigned explicitly when needed, using `with_name_bindings`.
+
+The full order of resolution attempts for a parameter is:
+1. Given value, in the form of `with_params(param=value)`. The value of param will be the given value.
+1. Name binding, in the form of `with_name_bindings(param='name_binding')`. The value of param will be the resolution of the name 'name_binding'.
+1. Type annotation. If the parameter has a type annotation (type hint), then the value of param will be the resolution of this type.
+1. If `param_names_as_bindings` is `True`, The container will attempt to resolve the param name itself.
+   If successful, the value of param will be the resolution of the parameter's name.
+1. Lastly, if a default value is defined for the parameter, it will be used. The value of param will be its default value.
+   If, however, `prefer_defaults` is `True` in calling `resolve_type` or `resolve_name`,
+   the default value will be used if no explicit value or binding was given (No `with_params` or `with_name_bindings` for that parameter),
+   instead of trying to resolve the type annotation or parameter name.
+
 ```python
 from di_container.container import Container, Instantiation
 
